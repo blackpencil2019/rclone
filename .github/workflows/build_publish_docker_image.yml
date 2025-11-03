@@ -6,11 +6,11 @@ name: Build & Push Docker Images
 
 # Trigger the workflow on push or pull request
 on:
-  push:
-    branches:
-      - '**'
-    tags:
-      - '**'
+  # push:
+  #   branches:
+  #     - '**'
+  #   tags:
+  #     - '**'
   workflow_dispatch:
     inputs:
       manual:
