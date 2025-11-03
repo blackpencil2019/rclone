@@ -224,6 +224,7 @@ type Fs struct {
 	checkBeforePurge   bool          // enables extra check that directory to purge really exists
 	hasOCMD5           bool          // set if can use owncloud style checksums for MD5
 	hasOCSHA1          bool          // set if can use owncloud style checksums for SHA1
+	hasOCSHA256        bool          // set if can use owncloud style checksums for SHA256
 	hasMESHA1          bool          // set if can use fastmail style checksums for SHA1
 	ntlmAuthMu         sync.Mutex    // mutex to serialize NTLM auth roundtrips
 	chunksUploadURL    string        // upload URL for nextcloud chunked
@@ -240,6 +241,7 @@ type Object struct {
 	hasMetaData bool      // whether info below has been set
 	size        int64     // size of the object
 	modTime     time.Time // modification time of the object
+	sha256      string    // SHA-256 of the object content if known
 	sha1        string    // SHA-1 of the object content if known
 	md5         string    // MD5 of the object content if known
 }
@@ -350,7 +352,7 @@ func (f *Fs) readMetaDataForPath(ctx context.Context, path string, depth string)
 		},
 		NoRedirect: true,
 	}
-	if f.hasOCMD5 || f.hasOCSHA1 {
+	if f.hasOCMD5 || f.hasOCSHA1 || f.hasOCSHA256 {
 		opts.Body = bytes.NewBuffer(owncloudProps)
 	}
 	var result api.Multistatus
@@ -642,6 +644,7 @@ func (f *Fs) setQuirks(ctx context.Context, vendor string) error {
 		f.propsetMtime = true
 		f.hasOCMD5 = true
 		f.hasOCSHA1 = true
+		f.hasOCSHA256 = true
 	case "infinitescale":
 		f.precision = time.Second
 		f.useOCMtime = true
@@ -785,7 +788,7 @@ func (f *Fs) listAll(ctx context.Context, dir string, directoriesOnly bool, file
 			"Depth": depth,
 		},
 	}
-	if f.hasOCMD5 || f.hasOCSHA1 {
+	if f.hasOCMD5 || f.hasOCSHA1 || f.hasOCSHA256 {
 		opts.Body = bytes.NewBuffer(owncloudProps)
 	}
 	var result api.Multistatus
@@ -1295,6 +1298,9 @@ func (f *Fs) Hashes() hash.Set {
 	if f.hasOCSHA1 || f.hasMESHA1 {
 		hashes.Add(hash.SHA1)
 	}
+	if f.hasOCSHA256 {
+		hashes.Add(hash.SHA256)
+	}
 	return hashes
 }
 
@@ -1366,6 +1372,9 @@ func (o *Object) Hash(ctx context.Context, t hash.Type) (string, error) {
 	if t == hash.SHA1 && (o.fs.hasOCSHA1 || o.fs.hasMESHA1) {
 		return o.sha1, nil
 	}
+	if t == hash.SHA256 && o.fs.hasOCSHA256 {
+		return o.sha256, nil
+	}
 	return "", hash.ErrUnsupported
 }
 
@@ -1385,8 +1394,11 @@ func (o *Object) setMetaData(info *api.Prop) (err error) {
 	o.hasMetaData = true
 	o.size = info.Size
 	o.modTime = time.Time(info.Modified)
-	if o.fs.hasOCMD5 || o.fs.hasOCSHA1 || o.fs.hasMESHA1 {
+	if o.fs.hasOCMD5 || o.fs.hasOCSHA1 || o.fs.hasOCSHA256 || o.fs.hasMESHA1 {
 		hashes := info.Hashes()
+		if o.fs.hasOCSHA256 {
+			o.sha256 = hashes[hash.SHA256]
+		}
 		if o.fs.hasOCSHA1 || o.fs.hasMESHA1 {
 			o.sha1 = hashes[hash.SHA1]
 		}
@@ -1454,7 +1466,9 @@ var owncloudPropsetWithChecksum = `<?xml version="1.0" encoding="utf-8" ?>
 func (o *Object) SetModTime(ctx context.Context, modTime time.Time) error {
 	if o.fs.propsetMtime {
 		checksums := ""
-		if o.fs.hasOCSHA1 && o.sha1 != "" {
+		if o.fs.hasOCSHA256 && o.sha256 != "" {
+			checksums = "SHA256:" + o.sha256
+		} else if o.fs.hasOCSHA1 && o.sha1 != "" {
 			checksums = "SHA1:" + o.sha1
 		} else if o.fs.hasOCMD5 && o.md5 != "" {
 			checksums = "MD5:" + o.md5
@@ -1580,13 +1594,18 @@ func (o *Object) Update(ctx context.Context, in io.Reader, src fs.ObjectInfo, op
 
 func (o *Object) extraHeaders(ctx context.Context, src fs.ObjectInfo) map[string]string {
 	extraHeaders := map[string]string{}
-	if o.fs.useOCMtime || o.fs.hasOCMD5 || o.fs.hasOCSHA1 {
+	if o.fs.useOCMtime || o.fs.hasOCMD5 || o.fs.hasOCSHA1 || o.fs.hasOCSHA256 {
 		if o.fs.useOCMtime {
 			extraHeaders["X-OC-Mtime"] = fmt.Sprintf("%d", src.ModTime(ctx).Unix())
 		}
 		// Set one upload checksum
 		// Owncloud uses one checksum only to check the upload and stores its own SHA1 and MD5
 		// Nextcloud stores the checksum you supply (SHA1 or MD5) but only stores one
+		if o.fs.hasOCSHA256 {
+			if sha256, _ := src.Hash(ctx, hash.SHA256); sha256 != "" {
+				extraHeaders["OC-Checksum"] = "SHA256:" + sha256
+			}
+		}
 		if o.fs.hasOCSHA1 {
 			if sha1, _ := src.Hash(ctx, hash.SHA1); sha1 != "" {
 				extraHeaders["OC-Checksum"] = "SHA1:" + sha1
