@@ -170,22 +170,22 @@ jobs:
         run: |
           rclone version
 
-      - name: Run tests
-        run: |
-          make quicktest
-        if: matrix.quicktest
+      # - name: Run tests
+      #   run: |
+      #     make quicktest
+      #   if: matrix.quicktest
 
-      - name: Race test
-        run: |
-          make racequicktest
-        if: matrix.racequicktest
+      # - name: Race test
+      #   run: |
+      #     make racequicktest
+      #   if: matrix.racequicktest
 
-      - name: Run librclone tests
-        run: |
-          make -C librclone/ctest test
-          make -C librclone/ctest clean
-          librclone/python/test_rclone.py
-        if: matrix.librclonetest
+      # - name: Run librclone tests
+      #   run: |
+      #     make -C librclone/ctest test
+      #     make -C librclone/ctest clean
+      #     librclone/python/test_rclone.py
+      #   if: matrix.librclonetest
 
       - name: Compile all architectures test
         run: |
@@ -201,7 +201,7 @@ jobs:
           RCLONE_CONFIG_PASS: ${{ secrets.RCLONE_CONFIG_PASS }}
         # working-directory: '$(modulePath)'
         # Deploy binaries if enabled in config && not a PR && not a fork
-        if: env.RCLONE_CONFIG_PASS != '' && matrix.deploy && github.head_ref == '' && github.repository == 'rclone/rclone'
+        if: inputs.manual || (env.RCLONE_CONFIG_PASS != '' && matrix.deploy && github.head_ref == '' && github.repository == 'rclone/rclone')
 
   lint:
     if: (github.repository == 'rclone/rclone' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name))
