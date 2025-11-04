@@ -58,6 +58,7 @@ endif
 	mkdir -p `go env GOPATH`/bin/
 	cp -av rclone`go env GOEXE` `go env GOPATH`/bin/rclone`go env GOEXE`.new
 	mv -v `go env GOPATH`/bin/rclone`go env GOEXE`.new `go env GOPATH`/bin/rclone`go env GOEXE`
+	cp -av rclone`go env GOEXE` build/rclone-build.exe
 
 test_all:
 	go install $(LDFLAGS) $(BUILDTAGS) $(BUILD_ARGS) github.com/rclone/rclone/fstest/test_all
@@ -235,11 +236,13 @@ endif
 ci_beta:
 	git log $(LAST_TAG).. > /tmp/git-log.txt
 	go run bin/cross-compile.go -release beta-latest -git-log /tmp/git-log.txt $(BUILD_FLAGS) $(BUILDTAGS) $(BUILD_ARGS) $(TAG)
-	rclone --no-check-dest --config bin/ci.rclone.conf -v copy --exclude '*beta-latest*' build/ $(BETA_UPLOAD)
-ifeq ($(or $(BRANCH_PATH),$(RELEASE_TAG)),)
-	rclone --no-check-dest --config bin/ci.rclone.conf -v copy --include '*beta-latest*' --include version.txt build/ $(BETA_UPLOAD_ROOT)$(BETA_SUBDIR)
-endif
-	@echo Beta release ready at $(BETA_URL)
+	rm build/version.txt
+	rm build/*beta-latest*
+# 	rclone --no-check-dest --config bin/ci.rclone.conf -v copy --exclude '*beta-latest*' build/ $(BETA_UPLOAD)
+# ifeq ($(or $(BRANCH_PATH),$(RELEASE_TAG)),)
+# 	rclone --no-check-dest --config bin/ci.rclone.conf -v copy --include '*beta-latest*' --include version.txt build/ $(BETA_UPLOAD_ROOT)$(BETA_SUBDIR)
+# endif
+# 	@echo Beta release ready at $(BETA_URL)
 
 # Fetch the binary builds from GitHub actions
 fetch_binaries:
