@@ -100,6 +100,9 @@ func init() {
 				Value: "rclone",
 				Help:  "rclone WebDAV server to serve a remote over HTTP via the WebDAV protocol",
 			}, {
+				Value: "mcloud",
+				Help:  "mcloud uses owncloud style checksum for SHA256",
+			}, {
 				Value: "other",
 				Help:  "Other site/service or software",
 			}},
@@ -644,7 +647,6 @@ func (f *Fs) setQuirks(ctx context.Context, vendor string) error {
 		f.propsetMtime = true
 		f.hasOCMD5 = true
 		f.hasOCSHA1 = true
-		f.hasOCSHA256 = true
 	case "infinitescale":
 		f.precision = time.Second
 		f.useOCMtime = true
@@ -713,6 +715,10 @@ func (f *Fs) setQuirks(ctx context.Context, vendor string) error {
 		f.canStream = true
 		f.precision = time.Second
 		f.useOCMtime = true
+	case "mcloud":
+		f.canStream = true
+		f.precision = time.Second
+		f.hasOCSHA256 = true
 	case "other":
 	default:
 		fs.Debugf(f, "Unknown vendor %q", vendor)
@@ -1292,14 +1298,14 @@ func (f *Fs) DirMove(ctx context.Context, src fs.Fs, srcRemote, dstRemote string
 // Hashes returns the supported hash sets.
 func (f *Fs) Hashes() hash.Set {
 	hashes := hash.Set(hash.None)
+	if f.hasOCSHA256 {
+		hashes.Add(hash.SHA256)
+	}
 	if f.hasOCMD5 {
 		hashes.Add(hash.MD5)
 	}
 	if f.hasOCSHA1 || f.hasMESHA1 {
 		hashes.Add(hash.SHA1)
-	}
-	if f.hasOCSHA256 {
-		hashes.Add(hash.SHA256)
 	}
 	return hashes
 }
